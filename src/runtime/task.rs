@@ -1,7 +1,34 @@
 use std::{env, fs};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use serde_json::Value;
 use crate::logger;
+
+fn find_binary_recursive(dir: &Path, name: &str) -> Option<PathBuf> {
+    if !dir.exists() || !dir.is_dir() {
+        return None;
+    }
+
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            
+            // Check if this is the binary we're looking for
+            if path.is_file() {
+                if path.file_name().and_then(|n| n.to_str()) == Some(name) {
+                    return Some(path);
+                }
+            }
+            
+            // Recursively search subdirectories, but skip node_modules within node_modules
+            if path.is_dir() && path.file_name().and_then(|n| n.to_str()) != Some("node_modules") {
+                if let Some(found) = find_binary_recursive(&path, name) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
 
 pub fn run(task_name: &str) {
     let debug_mode = env::args().any(|arg| arg == "--debug");
@@ -80,13 +107,21 @@ pub fn run(task_name: &str) {
                     }
 
                     let binary_path = match possible_paths.iter().find(|p| p.exists()) {
-                        Some(path) => path,
+                        Some(path) => path.to_path_buf(),
                         None => {
-                            logger::error(&format!(
-                                "Binary '{}' not found. Please make sure the package is installed.",
-                                binary_name
-                            ));
-                            return;
+                            // Try recursive search as a fallback
+                            if let Some(found_path) = find_binary_recursive(&node_modules, binary_name) {
+                                if debug_mode {
+                                    logger::info(&format!("Found binary through recursive search at: {}", found_path.display()));
+                                }
+                                found_path
+                            } else {
+                                logger::error(&format!(
+                                    "Binary '{}' not found. Please make sure the package is installed.",
+                                    binary_name
+                                ));
+                                return;
+                            }
                         }
                     };
 
@@ -94,7 +129,7 @@ pub fn run(task_name: &str) {
                         logger::info(&format!("Using binary at: {}", binary_path.display()));
                     }
 
-                    match std::process::Command::new(binary_path)
+                    match std::process::Command::new(&binary_path)
                         .args(&parts[1..])
                         .current_dir(current_dir)
                         .status()
