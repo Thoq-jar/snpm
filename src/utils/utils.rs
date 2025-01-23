@@ -1,6 +1,28 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub const ASCII_ART: &str = r"
+     _______..__   __. .______   .___  ___. 
+    /       ||  \ |  | |   _  \  |   \/   | 
+   |   (----`|   \|  | |  |_)  | |  \  /  | 
+    \   \    |  . `  | |   ___/  |  |\/|  | 
+.----)   |   |  |\   | |  |      |  |  |  | 
+|_______/    |__| \__| | _|      |__|  |__| 
+";
+
+pub fn get_framework_info(command: &str) -> Option<(&'static str, &'static str)> {
+    match command {
+        cmd if cmd.starts_with("next") => Some(("Next.js", "nextjs_pink")),
+        cmd if cmd.starts_with("nuxt") => Some(("Nuxt", "green")),
+        cmd if cmd.starts_with("vite") => Some(("Vite", "yellow")),
+        cmd if cmd.starts_with("vue") => Some(("Vue", "green")),
+        cmd if cmd.starts_with("react-scripts") => Some(("Create React App", "cyan")),
+        cmd if cmd.starts_with("astro") => Some(("Astro", "orange")),
+        cmd if cmd.starts_with("svelte") => Some(("Svelte", "red")),
+        _ => None,
+    }
+}
+
 pub fn get_cache_directory() -> PathBuf {
     if cfg!(target_os = "windows") {
         PathBuf::from(r"C:\snpm_cache")

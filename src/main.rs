@@ -3,29 +3,51 @@ mod runtime;
 mod utils;
 
 use std::env;
-use io::logger;
-use crate::runtime::package;
+use crate::runtime::{task, package};
+use crate::io::logger;
+use crate::utils::info;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    
     if args.len() < 2 {
-        logger::error("No command provided. Usage: snpm <command> [options]");
+        logger::error("No command provided");
         return;
     }
 
-    let debug_mode = args.contains(&"--debug".to_string());
-    let force_mode = args.contains(&"--force".to_string());
-
-    match args[1].as_str() {
-        "install" => package::install(debug_mode, force_mode),
+    let command = &args[1];
+    match command.as_str() {
+        "install" => package::install(false, false),
         "task" => {
             if args.len() < 3 {
-                logger::error("No task name provided. Usage: snpm task <task-name>");
+                logger::error("No task name provided");
                 return;
             }
-            runtime::task::run(&args[2]);
+            task::run(&args[2]);
+        },
+        "x" | "exec" => {
+            if args.len() < 3 {
+                logger::error("No package name provided for execution");
+                return;
+            }
+            let package_args = args[2..].join(" ");
+            task::run_npx(&package_args);
+        },
+        "create" => {
+            if args.len() < 3 {
+                logger::error("No template name provided for create");
+                return;
+            }
+            let create_args = args[2..].join(" ");
+            task::run_create(&create_args);
+        },
+        "help" | "h" | "?" | "version" | "v" => {
+            info::version();
+        },
+        _ => {
+            info::version();
+            std::process::exit(1);
         }
-        _ => logger::error("Unknown command. Supported commands: install, task"),
     }
 }
 

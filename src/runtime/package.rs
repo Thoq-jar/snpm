@@ -4,6 +4,8 @@ use std::sync::{mpsc, Arc};
 use serde_json::Value;
 use crate::{logger, io::net, utils::utils};
 use crate::utils::lockfile;
+use crate::io::logger::colorize;
+use crate::utils::utils::ASCII_ART;
 
 pub fn install(debug_mode: bool, force_mode: bool) {
     let package_file = Path::new("package.json");
@@ -24,6 +26,7 @@ pub fn install(debug_mode: bool, force_mode: bool) {
         return;
     }
 
+    println!("{}", colorize("red", ASCII_ART));
     println!("SuperNPM v{}\n", env!("CARGO_PKG_VERSION"));
     logger::info("Installing packages...\n");
 
