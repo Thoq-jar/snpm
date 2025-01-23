@@ -70,7 +70,29 @@ pub fn run(task_name: &str) {
 
     match scripts {
         None => {
-            logger::error("No 'scripts' field found in package.json");
+            if debug_mode {
+                println!("No 'scripts' field found in package.json, attempting to run as system command...");
+            }
+            let parts: Vec<&str> = task_name.split_whitespace().collect();
+            if parts.is_empty() {
+                logger::error("Empty command");
+                return;
+            }
+
+            match std::process::Command::new(&parts[0])
+                .args(&parts[1..])
+                .status() {
+                Ok(status) => {
+                    if !status.success() {
+                        logger::error(&format!(
+                            "Command '{}' failed with exit code: {}",
+                            task_name,
+                            status.code().unwrap_or(-1)
+                        ));
+                    }
+                }
+                Err(e) => logger::error(&format!("Failed to execute command: {}", e)),
+            }
             return;
         }
         Some(scripts_obj) => {
@@ -222,7 +244,27 @@ pub fn run(task_name: &str) {
                     logger::error(&format!("Script '{}' is not a string", task_name));
                 }
             } else {
-                logger::error(&format!("Script '{}' not found in package.json", task_name));
+                println!("Script '{}' not found in package.json, attempting to run as system command...", task_name);
+                let parts: Vec<&str> = task_name.split_whitespace().collect();
+                if parts.is_empty() {
+                    logger::error("Empty command");
+                    return;
+                }
+
+                match std::process::Command::new(&parts[0])
+                    .args(&parts[1..])
+                    .status() {
+                    Ok(status) => {
+                        if !status.success() {
+                            logger::error(&format!(
+                                "Command '{}' failed with exit code: {}",
+                                task_name,
+                                status.code().unwrap_or(-1)
+                            ));
+                        }
+                    }
+                    Err(e) => logger::error(&format!("Failed to execute command: {}", e)),
+                }
             }
         }
     }
