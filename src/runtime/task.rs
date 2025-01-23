@@ -148,10 +148,8 @@ pub fn run(task_name: &str) {
 
                     let mut possible_paths = vec![];
                     
-                    // Try node_modules first
                     possible_paths.push(node_modules.join(".bin").join(binary_name));
                     
-                    // Also check system PATH
                     if let Ok(system_path) = which::which(binary_name) {
                         possible_paths.push(system_path);
                     }
@@ -168,7 +166,6 @@ pub fn run(task_name: &str) {
                             }
                         }
                         None => {
-                            // Fall back to direct system command
                             let mut command = Command::new(binary_name);
                             command.args(&parts[1..]);
                             
@@ -226,25 +223,47 @@ pub fn run(task_name: &str) {
                         Err(e) => {
                             if e.raw_os_error() == Some(193) {
                                 if debug_mode {
-                                    logger::info("Direct execution failed, trying to run through node...");
+                                    logger::info("Direct execution failed, trying alternative execution methods...");
                                 }
                                 
-                                match std::process::Command::new("node")
+                                let node_result = std::process::Command::new("node")
                                     .arg(&binary_path)
                                     .args(&parts[1..])
-                                    .current_dir(current_dir)
-                                    .status()
-                                {
-                                    Ok(status) => {
-                                        if !status.success() {
-                                            logger::error(&format!(
-                                                "Script '{}' failed with exit code: {}",
-                                                task_name,
-                                                status.code().unwrap_or(-1)
-                                            ));
+                                    .current_dir(&current_dir)
+                                    .status();
+
+                                if let Err(_) = node_result {
+                                    let node_module_result = std::process::Command::new("node")
+                                        .arg(format!("./node_modules/.bin/{}", binary_name))
+                                        .args(&parts[1..])
+                                        .current_dir(&current_dir)
+                                        .status();
+
+                                    match node_module_result {
+                                        Ok(status) => {
+                                            if !status.success() {
+                                                logger::error(&format!(
+                                                    "Script '{}' failed with exit code: {}",
+                                                    task_name,
+                                                    status.code().unwrap_or(-1)
+                                                ));
+                                            }
                                         }
+                                        Err(e) => logger::error(&format!("Failed to execute script through node: {}", e)),
                                     }
-                                    Err(e) => logger::error(&format!("Failed to execute script through node: {}", e)),
+                                } else {
+                                    match node_result {
+                                        Ok(status) => {
+                                            if !status.success() {
+                                                logger::error(&format!(
+                                                    "Script '{}' failed with exit code: {}",
+                                                    task_name,
+                                                    status.code().unwrap_or(-1)
+                                                ));
+                                            }
+                                        }
+                                        Err(e) => logger::error(&format!("Failed to execute script through node: {}", e)),
+                                    }
                                 }
                             } else {
                                 logger::error(&format!("Failed to execute script: {}", e));
