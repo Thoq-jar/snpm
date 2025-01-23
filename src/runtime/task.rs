@@ -5,6 +5,7 @@ use crate::logger;
 use crate::utils::utils::ASCII_ART;
 use crate::io::logger::colorize;
 use crate::utils::utils::get_framework_info;
+use std::process::Command;
 
 fn find_binary_recursive(dir: &Path, name: &str) -> Option<PathBuf> {
     if !dir.exists() || !dir.is_dir() {
@@ -70,9 +71,6 @@ pub fn run(task_name: &str) {
 
     match scripts {
         None => {
-            if debug_mode {
-                println!("No 'scripts' field found in package.json, attempting to run as system command...");
-            }
             let parts: Vec<&str> = task_name.split_whitespace().collect();
             if parts.is_empty() {
                 logger::error("Empty command");
@@ -109,9 +107,6 @@ pub fn run(task_name: &str) {
                         println!("  > Booting {}...", colorize(color, framework_name));
                     }
                     println!();
-                    
-                    let current_dir = env::current_dir().expect("Failed to get current directory");
-                    let node_modules = current_dir.join("node_modules");
 
                     let parts: Vec<&str> = command.split_whitespace().collect();
                     if parts.is_empty() {
@@ -120,50 +115,66 @@ pub fn run(task_name: &str) {
                     }
 
                     let binary_name = parts[0];
+                    
+                    if binary_name == "echo" || binary_name == "cd" || binary_name == "pwd" {
+                        let status = Command::new("sh")
+                            .arg("-c")
+                            .arg(command)
+                            .status();
+
+                        if let Err(e) = status {
+                            logger::error(&format!("Failed to execute command: {}", e));
+                        }
+                        return;
+                    }
+
+                    let current_dir = env::current_dir().expect("Failed to get current directory");
+                    let node_modules = current_dir.join("node_modules");
+                    let binary_path = node_modules.join(".bin").join(binary_name);
+
+                    let command_result = if binary_path.exists() {
+                        Command::new(binary_path)
+                            .args(&parts[1..])
+                            .status()
+                    } else {
+                        Command::new(binary_name)
+                            .args(&parts[1..])
+                            .status()
+                    };
+
+                    if let Err(e) = command_result {
+                        logger::error(&format!("Failed to execute command: {}", e));
+                    }
 
                     let mut possible_paths = vec![];
                     
-                    #[cfg(windows)]
-                    {
-                        possible_paths.extend(vec![
-                            node_modules.join(".bin").join(format!("{}.cmd", binary_name)),
-                            node_modules.join(".bin").join(format!("{}.exe", binary_name)),
-                            node_modules.join(".bin").join(binary_name),
-                            node_modules.join(binary_name).join("bin").join(format!("{}.cmd", binary_name)),
-                            node_modules.join(binary_name).join("bin").join(format!("{}.exe", binary_name)),
-                            node_modules.join(binary_name).join("bin").join(binary_name),
-                            node_modules.join(binary_name).join("dist").join(format!("{}.cmd", binary_name)),
-                            node_modules.join(binary_name).join("dist").join(format!("{}.exe", binary_name)),
-                            node_modules.join(binary_name).join("dist").join(binary_name),
-                        ]);
+                    // Try node_modules first
+                    possible_paths.push(node_modules.join(".bin").join(binary_name));
+                    
+                    // Also check system PATH
+                    if let Ok(system_path) = which::which(binary_name) {
+                        possible_paths.push(system_path);
                     }
 
-                    #[cfg(not(windows))]
-                    {
-                        possible_paths.extend(vec![
-                            node_modules.join(".bin").join(binary_name),
-                            node_modules.join(binary_name).join("bin").join(binary_name),
-                            node_modules.join(binary_name).join("dist").join(binary_name),
-                        ]);
-                    }
+                    let executable_path = possible_paths.iter().find(|path| path.exists());
 
-                    if binary_name.starts_with('@') {
-                        if let Some(idx) = binary_name.find('/') {
-                            let (scope, pkg) = binary_name.split_at(idx);
-                            let pkg = &pkg[1..];
-                            #[cfg(windows)]
-                            {
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("bin").join(format!("{}.cmd", pkg)));
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("bin").join(format!("{}.exe", pkg)));
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("bin").join(pkg));
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("dist").join(format!("{}.cmd", pkg)));
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("dist").join(format!("{}.exe", pkg)));
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("dist").join(pkg));
+                    match executable_path {
+                        Some(path) => {
+                            let mut command = Command::new(path);
+                            command.args(&parts[1..]);
+                            
+                            if let Err(e) = command.status() {
+                                logger::error(&format!("Failed to execute command: {}", e));
                             }
-                            #[cfg(not(windows))]
-                            {
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("bin").join(pkg));
-                                possible_paths.push(node_modules.join(scope).join(pkg).join("dist").join(pkg));
+                        }
+                        None => {
+                            // Fall back to direct system command
+                            let mut command = Command::new(binary_name);
+                            command.args(&parts[1..]);
+                            
+                            match command.status() {
+                                Ok(_) => (),
+                                Err(e) => logger::error(&format!("Command not found in node_modules or system: {}", e))
                             }
                         }
                     }
